@@ -1,26 +1,139 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Escalonador de Processos</title>
-    <script defer src="script.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        table { width: 60%; margin: 20px auto; border-collapse: collapse; }
-        th, td { border: 1px solid black; padding: 8px; }
-        th { background-color: #f4f4f4; }
-        .container { margin-top: 20px; }
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; text-align: center; }
+        .container { width: 50%; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; background: white; }
+        table, th, td { border: 1px solid black; padding: 8px; }
+        button { background-color: #007BFF; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; margin-top: 10px; }
+        button:hover { background-color: #0056b3; }
+        input { padding: 5px; margin: 5px; }
     </style>
 </head>
 <body>
-    <h1>Escalonador de Processos</h1>
     <div class="container">
+        <h2>Escalonador de Processos</h2>
+        <label for="numProcesses">Quantidade de processos:</label>
+        <input type="number" id="numProcesses" min="1">
+        <button onclick="generateProcessInputs()">Gerar Campos</button>
+        <div id="processInputs"></div>
         <label for="quantum">Quantum para Round Robin:</label>
-        <input type="number" id="quantum" min="1" value="2">
-        <button onclick="startScheduling()">Executar Escalonamento</button>
+        <input type="number" id="quantum" min="1">
+        <button onclick="executeScheduling()">Executar Escalonamento</button>
+        <div id="output"></div>
     </div>
-    
-    <div id="results"></div>
+
+    <script>
+        function generateProcessInputs() {
+            let num = document.getElementById("numProcesses").value;
+            let container = document.getElementById("processInputs");
+            container.innerHTML = "";
+            for (let i = 0; i < num; i++) {
+                container.innerHTML += `
+                    <div>
+                        <label>P${i + 1} - AT:</label>
+                        <input type="number" id="at${i}" min="0">
+                        <label>BT:</label>
+                        <input type="number" id="bt${i}" min="1">
+                    </div>`;
+            }
+        }
+
+        function executeScheduling() {
+            let num = document.getElementById("numProcesses").value;
+            let quantum = document.getElementById("quantum").value;
+            let processes = [];
+            for (let i = 0; i < num; i++) {
+                let at = document.getElementById(`at${i}`).value;
+                let bt = document.getElementById(`bt${i}`).value;
+                processes.push({ id: `P${i + 1}`, at: Number(at), bt: Number(bt) });
+            }
+            let outputDiv = document.getElementById("output");
+            outputDiv.innerHTML = "";
+            outputDiv.innerHTML += `<h3>FCFS</h3>${formatOutput(fcfsScheduling([...processes]))}`;
+            outputDiv.innerHTML += `<h3>SJF</h3>${formatOutput(sjfScheduling([...processes]))}`;
+            outputDiv.innerHTML += `<h3>Round Robin</h3>${formatOutput(roundRobinScheduling([...processes], Number(quantum)))}`;
+        }
+
+        function formatOutput(processes) {
+            let totalTAT = processes.reduce((sum, p) => sum + p.tat, 0);
+            let totalWT = processes.reduce((sum, p) => sum + p.wt, 0);
+            let result = `<table><tr><th>ID</th><th>AT</th><th>BT</th><th>CT</th><th>TAT</th><th>WT</th></tr>`;
+            processes.forEach(p => {
+                result += `<tr><td>${p.id}</td><td>${p.at}</td><td>${p.bt}</td><td>${p.ct}</td><td>${p.tat}</td><td>${p.wt}</td></tr>`;
+            });
+            result += `</table>`;
+            result += `<p><strong>Tempo médio de TAT:</strong> ${(totalTAT / processes.length).toFixed(2)}</p>`;
+            result += `<p><strong>Tempo médio de WT:</strong> ${(totalWT / processes.length).toFixed(2)}</p>`;
+            return result;
+        }
+
+        function fcfsScheduling(processes) {
+            processes.sort((a, b) => a.at - b.at);
+            let currentTime = 0;
+            processes.forEach(process => {
+                if (currentTime < process.at) {
+                    currentTime = process.at;
+                }
+                process.ct = currentTime + process.bt;
+                process.tat = process.ct - process.at;
+                process.wt = process.tat - process.bt;
+                currentTime = process.ct;
+            });
+            return processes;
+        }
+
+        function sjfScheduling(processes) {
+            processes.sort((a, b) => a.at - b.at);
+            let completed = [];
+            let readyQueue = [];
+            let currentTime = 0;
+            while (completed.length < processes.length) {
+                readyQueue = processes.filter(p => p.at <= currentTime && !completed.includes(p));
+                if (readyQueue.length === 0) {
+                    currentTime = Math.min(...processes.filter(p => !completed.includes(p)).map(p => p.at));
+                    continue;
+                }
+                readyQueue.sort((a, b) => a.bt - b.bt);
+                let process = readyQueue[0];
+                process.ct = currentTime + process.bt;
+                process.tat = process.ct - process.at;
+                process.wt = process.tat - process.bt;
+                currentTime = process.ct;
+                completed.push(process);
+            }
+            return completed;
+        }
+
+        function roundRobinScheduling(processes, quantum) {
+            let queue = [];
+            let currentTime = 0;
+            let remainingProcesses = processes.map(p => ({ ...p, remainingTime: p.bt }));
+            while (remainingProcesses.length > 0) {
+                let process = remainingProcesses.shift();
+                if (process) {
+                    if (currentTime < process.at) {
+                        currentTime = process.at;
+                    }
+                    let executionTime = Math.min(process.remainingTime, quantum);
+                    currentTime += executionTime;
+                    process.remainingTime -= executionTime;
+                    if (process.remainingTime > 0) {
+                        remainingProcesses.push(process);
+                    } else {
+                        process.ct = currentTime;
+                        process.tat = process.ct - process.at;
+                        process.wt = process.tat - process.bt;
+                        queue.push(process);
+                    }
+                }
+            }
+            return queue;
+        }
+    </script>
 </body>
 </html>
